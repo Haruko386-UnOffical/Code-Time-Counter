@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --bg-color: #1a1b26;
+            --card-bg: #24283b;
+            --text-main: #c0caf5;
+            --text-sub: #565f89;
+            --accent: #7aa2f7; /* 这里定义了淡蓝色 */
+            --danger: #f7768e;
+            --success: #9ece6a;
+        }
+        
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #333;
+            box-sizing: border-box;
+        }
+
+        .title-bar {
+            height: 32px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 0 10px;
+            /* 注意：我们在 C++ 里接管了拖拽，这里的 CSS drag 也可以保留作为双重保险 */
+            -webkit-app-region: drag; 
+            background: rgba(0,0,0,0.1);
+        }
+
+        .close-btn {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ff5f56;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            color: #4a0002;
+            opacity: 0.8;
+            transition: 0.2s;
+        }
+        .close-btn:hover { opacity: 1; transform: scale(1.1); }
+        .close-btn::before { content: "×"; font-weight: bold; margin-top: -1px;}
+
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(255,255,255,0.05);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: #555; transition: 0.3s; }
+        .dot.active { background: var(--success); box-shadow: 0 0 8px var(--success); }
+
+        .time-display {
+            font-size: 48px;
+            font-weight: 700;
+            margin: 10px 0;
+            line-height: 1;
+            color: #fff;
+        }
+        .session-label { font-size: 12px; color: var(--text-sub); text-transform: uppercase; letter-spacing: 1px; }
+        .session-time { font-size: 14px; color: var(--accent); margin-top: 5px; }
+
+        .toggle-container {
+            margin-top: 40px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-sub);
+        }
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            /* 【修改点】：使用 var(--accent) 即淡蓝色，替代之前的灰色 */
+            background-color: var(--accent); 
+            transition: .4s;
+            border-radius: 34px;
+            -webkit-app-region: no-drag;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        /* 严格模式 (Checked) 保持红色 */
+        input:checked + .slider { background-color: var(--danger); }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        .app-name {
+            margin-top: auto;
+            padding-bottom: 10px;
+            font-size: 10px;
+            color: var(--text-sub);
+            max-width: 250px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body>
+    <div class="title-bar">
+        <div class="close-btn" onclick="closeApp()"></div>
+    </div>
+
+    <div class="container">
+        <div class="status-badge">
+            <div class="dot" id="statusDot"></div>
+            <span id="statusText">Idle</span>
+        </div>
+
+        <div class="time-display" id="totalTime">00:00:00</div>
+        
+        <div class="session-label">Current Session</div>
+        <div class="session-time" id="sessionTime">00:00:00</div>
+
+        <div class="toggle-container">
+            <span>Loose</span>
+            <label class="switch">
+                <input type="checkbox" id="strictModeToggle" onclick="toggleStrict()">
+                <span class="slider"></span>
+            </label>
+            <span>Strict</span>
+        </div>
+
+        <div class="app-name" id="currentApp">Ready</div>
+    </div>
+
+    <script>
+        function formatTime(totalSeconds) {
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            return `${String(h).padStart(2,'0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        async function toggleStrict() {
+            const checkbox = document.getElementById('strictModeToggle');
+            await window.set_strict(checkbox.checked); 
+        }
+
+        async function closeApp() {
+            await window.close_app();
+        }
+
+        setInterval(async () => {
+            try {
+                const data = await window.get_stats(); 
+                
+                document.getElementById('totalTime').innerText = formatTime(data.total);
+                document.getElementById('sessionTime').innerText = formatTime(data.session);
+                
+                const toggle = document.getElementById('strictModeToggle');
+                if (toggle.checked !== data.isStrict) {
+                    toggle.checked = data.isStrict;
+                }
+                
+                document.getElementById('currentApp').innerText = data.app;
+                
+                const dot = document.getElementById('statusDot');
+                const txt = document.getElementById('statusText');
+                if (data.isTracking) {
+                    dot.classList.add('active');
+                    txt.innerText = "Tracking";
+                } else {
+                    dot.classList.remove('active');
+                    txt.innerText = "Idle";
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
