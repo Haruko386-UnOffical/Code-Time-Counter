@@ -12,7 +12,7 @@ g++ src/main.cpp src/tracker.cpp bin/manifest.o ^
     -I./include ^
     -L./bin ^
     -lwebview -lWebView2Loader ^
-    -lole32 -lshlwapi -lversion -luuid -loleaut32 ^
+    -lole32 -lshlwapi -lversion -luuid -loleaut32 -lcomdlg32 -ldwmapi ^
     -static-libgcc -static-libstdc++
 
 echo Copying UI...
@@ -20,4 +20,5 @@ if not exist "bin\ui" mkdir "bin\ui"
 copy ui\index.html bin\ui\index.html
 
 echo Done!
+@REM start bin/CodeTracker.exe
 pause
