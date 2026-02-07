@@ -1,4 +1,3 @@
-// main.cpp
 #include "../include/tracker.h"
 #include "../include/webview.h" 
 #include <windows.h>
@@ -133,7 +132,27 @@ LRESULT CALLBACK SubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             break;
         }
         case WM_NCHITTEST: {
-            return HTCLIENT;
+            LRESULT hit = DefWindowProc(hwnd, msg, wParam, lParam);  // Get default hit test
+            if (hit == HTCLIENT) {  // Only override if mouse is over client area
+                POINT pt = { LOWORD(lParam), HIWORD(lParam) };
+                ScreenToClient(hwnd, &pt);
+
+                RECT rc;
+                GetClientRect(hwnd, &rc);
+
+                const int grip = 8;  // Pixel width of invisible resize grips on edges/corners
+
+                // Detect edges and corners
+                if (pt.x <= grip && pt.y <= grip) return HTTOPLEFT;
+                if (pt.x >= rc.right - grip && pt.y <= grip) return HTTOPRIGHT;
+                if (pt.x <= grip && pt.y >= rc.bottom - grip) return HTBOTTOMLEFT;
+                if (pt.x >= rc.right - grip && pt.y >= rc.bottom - grip) return HTBOTTOMRIGHT;
+                if (pt.x <= grip) return HTLEFT;
+                if (pt.x >= rc.right - grip) return HTRIGHT;
+                if (pt.y <= grip) return HTTOP;
+                if (pt.y >= rc.bottom - grip) return HTBOTTOM;
+            }
+            return hit;  // Fallback to default (e.g., for dragging via HTCAPTION)
         }
 
         case WM_CLOSE:
@@ -240,18 +259,48 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }, nullptr);
 
     w.bind("resize_window", [&](std::string seq, std::string req, void* arg) {
-        size_t comma = req.find(',');
-        if (comma != std::string::npos && req.size() > 2) {
-            try {
-                int width = std::stoi(req.substr(1, comma-1));
-                int height = std::stoi(req.substr(comma+1, req.size()-comma-2));
-                if (width > 0 && height > 0) {
-                    SetWindowPos(g_hMainWnd, NULL, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
-                    SaveWindowPos(g_hMainWnd); // 立即保存
-                }
-            } catch(...) {}
+        // Remove outer brackets and any whitespace
+        req.erase(std::remove_if(req.begin(), req.end(), ::isspace), req.end());
+        if (req.size() < 3 || req[0] != '[' || req.back() != ']') {
+            w.resolve(seq, 0, "");
+            return;
         }
+        req = req.substr(1, req.size() - 2);  // Now "width,height"
+
+        size_t comma = req.find(',');
+        if (comma == std::string::npos) {
+            w.resolve(seq, 0, "");
+            return;
+        }
+
+        try {
+            int width = std::stoi(req.substr(0, comma));
+            int height = std::stoi(req.substr(comma + 1));
+            if (width > 0 && height > 0) {
+                if (width < 250) width = 250; // 最小宽度限制(没招了)
+                SetWindowPos(g_hMainWnd, NULL, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
+                SaveWindowPos(g_hMainWnd);
+            }
+        } catch (...) {}
         w.resolve(seq, 0, "");
+    }, nullptr);
+
+    w.bind("set_always_on_top", [&](std::string seq, std::string req, void* arg) {
+        // req是"[true]"或"[false]"，解析为bool
+        bool onTop = (req.find("true") != std::string::npos);
+        HWND insertAfter = onTop ? HWND_TOPMOST : HWND_NOTOPMOST;
+        SetWindowPos(g_hMainWnd, insertAfter, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        SaveUiConfig("AlwaysOnTop", onTop ? "1" : "0");  // 保存到config
+        w.resolve(seq, 0, "");
+    }, nullptr);
+
+    // 在get_config绑定中添加
+    w.bind("get_config", [&](std::string seq, std::string req, void* arg) {
+        std::string bg = LoadUiConfig("BgPath", "");
+        std::string blur = LoadUiConfig("BlurVal", "10");
+        std::string alwaysOnTop = LoadUiConfig("AlwaysOnTop", "0");
+        std::string json = "{\"bg\":\"" + bg + "\", \"blur\":" + blur + ", \"alwaysOnTop\":" + (alwaysOnTop == "1" ? "true" : "false") + "}";
+        w.resolve(seq, 0, json);
     }, nullptr);
 
     char path[MAX_PATH];

@@ -84,7 +84,7 @@
             top: 45px;
             left: 10px;
             width: 240px;
-            /* 稍微加宽一点 */
+            max-width: 100%;
             background: var(--menu-bg);
             backdrop-filter: blur(10px);
             border-radius: 8px;
@@ -95,6 +95,7 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
             z-index: 100;
+            overflow: auto;
         }
 
         #menu-dropdown.show {
@@ -217,6 +218,14 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        #alwaysOnTopBtn {
+            color: #9ece6a;
+        }
+
+        #alwaysOnTopBtn:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
     </style>
 </head>
 
@@ -232,7 +241,6 @@
         <div id="menu-dropdown">
             <div class="menu-item menu-btn" onclick="pickBackground()">
                 <span>Upload Background</span>
-                <span>🖼️</span>
             </div>
 
             <div class="menu-item">
@@ -251,7 +259,7 @@
 
                 <div class="slider-row">
                     <span>W</span>
-                    <input type="range" id="widthSlider" min="200" max="800" step="10"
+                    <input type="range" id="widthSlider" min="250" max="800" step="10"
                         oninput="resizeWindow('w', this.value)" onmousedown="startResizing()"
                         onmouseup="stopResizing()">
                     <span class="val-label" id="widthVal">320</span>
@@ -268,9 +276,15 @@
 
             <div class="menu-divider"></div>
 
+            <div class="menu-item menu-btn" onclick="toggleAlwaysOnTop()" id="alwaysOnTopBtn">
+                <span>Always on Top</span>
+                <span id="topStatus">Off</span>
+            </div>
+
+            <div class="menu-divider"></div>
+
             <div class="menu-item menu-btn" onclick="exitApp()" style="color: #f7768e;">
-                <span>Exit Application</span>
-                <span>🚪</span>
+                <span>Exit</span>
             </div>
         </div>
 
@@ -288,6 +302,14 @@
     </div>
 
     <script>
+        let isAlwaysOnTop = false;  // 初始状态
+
+        async function toggleAlwaysOnTop() {
+            isAlwaysOnTop = !isAlwaysOnTop;
+            await window.set_always_on_top(isAlwaysOnTop);
+            document.getElementById('topStatus').innerText = isAlwaysOnTop ? 'On' : 'Off';
+        }
+
         function formatTime(totalSeconds) {
             const h = Math.floor(totalSeconds / 3600);
             const m = Math.floor((totalSeconds % 3600) / 60);
@@ -313,25 +335,36 @@
         }
         async function saveBlur(val) { await window.save_blur(val); }
 
-        let isUserResizing = false; // 标记用户是否正在拖动滑块
+        let isUserResizing = false;
 
         function startResizing() { isUserResizing = true; }
         function stopResizing() { isUserResizing = false; }
 
         function resizeWindow(type, val) {
-            let w = document.getElementById('widthSlider').value;
-            let h = document.getElementById('heightSlider').value;
+            let w = parseInt(document.getElementById('widthSlider').value);
+            let h = parseInt(document.getElementById('heightSlider').value);
+
+            // 最小宽度限制
+            if (w < 250) {
+                w = 250; // 我真不会了，先这么整吧
+                document.getElementById('widthSlider').value = 250;
+            }
 
             document.getElementById('widthVal').innerText = w;
             document.getElementById('heightVal').innerText = h;
 
-            window.resize_window(`[${w}, ${h}]`);
+            window.resize_window(w, h);  // Pass as two integers
         }
 
         // 初始化配置
         (async () => {
             try {
                 const config = await window.get_config();
+                if (config.alwaysOnTop) {
+                    isAlwaysOnTop = config.alwaysOnTop;
+                    document.getElementById('topStatus').innerText = isAlwaysOnTop ? 'On' : 'Off';
+                    await window.set_always_on_top(isAlwaysOnTop);  // 应用初始状态
+                }
                 if (config.bg) applyBackground(config.bg);
                 const blur = config.blur || 10;
                 document.getElementById('blurSlider').value = blur;
